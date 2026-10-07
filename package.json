@@ -1,0 +1,22 @@
+{
+  "name": "callendar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node ${main}",
+    "dev": "nodemon ${main}"
+  },
+  "author": "Gabriel Afini",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.7",
+    "express": "^5.3.0",
+    "fs": "^0.0.1-security",
+    "googleapis": "^185.0.0"
+  }
+}
