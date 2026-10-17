@@ -1,27 +1,9 @@
 const fs = require('fs');
 const express = require('express');
+const { SCOPES, TOKEN_PATH } = require('../config');
+const { loadClientCredentials } = require('../middleware/autenticacao');
+
 const routes = express.Router();
-const { google } = require('googleapis');
-
-const CREDENTIALS_PATH = 'credentials.json';
-const TOKEN_PATH = 'token.json';
-const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
-
-function loadClientCredentials() {
-    const content = fs.readFileSync(CREDENTIALS_PATH, 'utf8');
-    const keys = JSON.parse(content);
-    const config = keys.installed || keys.web;
-
-    if (!config) {
-        throw new Error('Formato inválido em credentials.json (esperado "web" ou "installed").');
-    }
-
-    return new google.auth.OAuth2(
-        config.client_id,
-        config.client_secret,
-        config.redirect_uris[0]
-    );
-}
 
 // Rota para iniciar a autenticação (Redireciona o usuário para o Google)
 routes.get('/', (req, res) => {
