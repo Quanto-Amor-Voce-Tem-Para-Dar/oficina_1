@@ -35,7 +35,7 @@ routes.get('/oauth2callback', async (req, res) => {
         // Salva o token em um arquivo JSON para uso futuro
         fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
 
-        res.send('Autenticação realizada com sucesso! Você já pode fechar esta aba e usar a API.');
+        res.redirect('/escala');
     } catch (error) {
         console.error('Erro ao recuperar o token:', error);
         res.status(500).send('Erro na autenticação.');
