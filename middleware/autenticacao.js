@@ -49,4 +49,21 @@ async function loginValido() {
     }
 }
 
-module.exports = { loadClientCredentials, loginValido };
+function getCalendar() {
+    const auth = getAuthClient();
+    return auth && google.calendar({ version: 'v3', auth });
+}
+
+function exigirLogin(req, res, next) {
+    const calendar = getCalendar();
+    if (!calendar) {
+        return res.status(401).json({
+            status: 'ERRO',
+            mensagem: `Você precisa se autenticar primeiro! Acesse: http://localhost:${PORTA}/auth`,
+        });
+    }
+    req.calendar = calendar;
+    next();
+}
+
+module.exports = { loadClientCredentials, loginValido, exigirLogin };
