@@ -9,7 +9,7 @@ app.get('/', async (req, res) => {
     res.redirect((await loginValido()) ? '/escala' : '/auth');
 });
 
-app.use(require('./routes/auth'));
+app.use('/auth', require('./routes/auth'));
 app.use(require('./routes/escala'));
 app.use(require('./middleware/erros'));
 
