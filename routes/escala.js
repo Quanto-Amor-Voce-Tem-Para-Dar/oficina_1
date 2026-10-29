@@ -19,7 +19,7 @@ routes.get('/escala', async (req, res) => {
     if (!(await loginValido())) return res.redirect('/auth');
     res.json({
         status: 'OK',
-        mensagem: 'Login ativo. Para gerar a escala, envie o payload com POST /escala (veja o README).',
+        mensagem: 'Login ativo. Para gerar a escala, envie o payload com POST /escala (veja o README) ou utilize GET /events para usar o payload mockado.',
     });
 });
 

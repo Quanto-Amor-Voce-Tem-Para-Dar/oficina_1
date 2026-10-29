@@ -44,4 +44,4 @@ function sobrepoe(aIni, aFim, bIni, bFim) {
     return aIni < bFim && bIni < aFim;
 }
 
-module.exports = { MINUTOS_POR_PONTO_ACEITOS, achatarBlocos, sobrepoe, lerMinutosPorPonto };
+module.exports = { MINUTOS_POR_PONTO_ACEITOS, lerMinutosPorPonto, calcularPontos, achatarBlocos, sobrepoe };

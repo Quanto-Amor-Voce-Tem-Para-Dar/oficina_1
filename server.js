@@ -1,5 +1,5 @@
 const express = require('express');
-const { PORTA } = require('./config');
+const { PORTA, validarConfig } = require('./config');
 const { loginValido } = require('./middleware/autenticacao');
 
 const app = express();
@@ -9,9 +9,16 @@ app.get('/', async (req, res) => {
     res.redirect((await loginValido()) ? '/escala' : '/auth');
 });
 
-app.use('/auth', require('./routes/auth'));
+app.use(require('./routes/auth'));
 app.use(require('./routes/escala'));
+app.use(require('./middleware/erros'));
 
-app.listen(PORTA, () => {
-    console.log(`Servidor iniciado em http://localhost:${PORTA}`);
-});
+const erros = validarConfig();
+if (erros.length) {
+    erros.forEach((erro) => console.error(`Configuração inválida: ${erro}`));
+    process.exit(1);
+} else {
+    app.listen(PORTA, () => {
+        console.log(`Servidor iniciado em http://localhost:${PORTA}`);
+    });
+}

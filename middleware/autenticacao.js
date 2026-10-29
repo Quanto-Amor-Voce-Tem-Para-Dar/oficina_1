@@ -66,4 +66,4 @@ function exigirLogin(req, res, next) {
     next();
 }
 
-module.exports = { loadClientCredentials, loginValido, exigirLogin };
+module.exports = { loadClientCredentials, getAuthClient, getCalendar, loginValido, exigirLogin };

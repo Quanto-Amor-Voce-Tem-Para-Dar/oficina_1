@@ -6,7 +6,7 @@ const { loadClientCredentials } = require('../middleware/autenticacao');
 const routes = express.Router();
 
 // Rota para iniciar a autenticação (Redireciona o usuário para o Google)
-routes.get('/', (req, res) => {
+routes.get('/auth', (req, res) => {
     try {
         const oAuth2Client = loadClientCredentials();
         const authUrl = oAuth2Client.generateAuthUrl({

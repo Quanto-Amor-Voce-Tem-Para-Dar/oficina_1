@@ -41,4 +41,4 @@ function validarPayload(req, res, next) {
     next();
 }
 
-module.exports = { validarPayload };
+module.exports = { validarPayload, listarErrosDoPayload };

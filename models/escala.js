@@ -7,7 +7,8 @@ const { carregarPontos, salvarPontos } = require('../data/pontos');
 // Soma os pontos de cada bloco a quem foi alocado e grava.
 // Com gravar = false só calcula (pré-visualização): nada é gravado.
 // Por enquanto roda a cada geração de escala (fase de teste, sem confirmação por e-mail).
-// Quando o e-mail for integrado, o ponto de quem recusar deve ser removido.
+// Quando o e-mail for integrado, o ponto de quem recusar deve ser removido. 
+// =================== (Aparentemente o servidor SMTP apenas envia, em caso verdadeiro, não será possivel saber quem recusa)
 function registrarPontos(blocos, gravar = true) {
     const pontos = carregarPontos();
     for (const bloco of blocos) {
@@ -53,4 +54,4 @@ async function gerarEscala(calendar, payload, gravar = true) {
     };
 }
 
-module.exports = { gerarEscala };
+module.exports = { gerarEscala, registrarPontos };
