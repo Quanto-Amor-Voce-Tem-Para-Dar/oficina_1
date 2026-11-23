@@ -1,99 +1,71 @@
-import React, { createContext, useContext, useMemo, useRef, useState } from 'react'
-import { volunteers as seedVolunteers, actions as seedActions, initialSchedules } from '../data/mockData'
-import { generateSchedule } from '../utils/schedule'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { get, post, salvarToken, lerToken, quandoSessaoExpirar } from '../api'
 
 const AppContext = createContext(null)
 
-const IDENTITIES = {
-  admin: { kind: 'admin', name: 'Ana Souza', roleLabel: 'Presidente' },
-  voluntario: { kind: 'voluntario', volunteerId: 'v1', roleLabel: 'Voluntário' },
-}
+const ROTULO_PERFIL = { ADMINISTRADOR: 'Administrador', VOLUNTARIO: 'Voluntário' }
 
 export function AppProvider({ children }) {
-  const [role, setRole] = useState(null)
-  const [volunteers, setVolunteers] = useState(seedVolunteers)
-  const [actions] = useState(seedActions)
-  const [schedules, setSchedules] = useState(initialSchedules)
+  // usuario: null = deslogado | undefined = ainda verificando a sessão salva
+  const [usuario, setUsuario] = useState(lerToken() ? undefined : null)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
 
-  const currentVolunteer = useMemo(
-    () => volunteers.find((v) => v.id === IDENTITIES.voluntario.volunteerId),
-    [volunteers],
-  )
-
-  const currentUser =
-    role === 'admin'
-      ? { name: IDENTITIES.admin.name, roleLabel: IDENTITIES.admin.roleLabel }
-      : { name: currentVolunteer?.name, roleLabel: IDENTITIES.voluntario.roleLabel }
-
-  function showToast(message) {
-    setToast(message)
+  const showToast = useCallback((message, tom = 'ok') => {
+    setToast({ message, tom })
     window.clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(null), 3200)
+    toastTimer.current = window.setTimeout(() => setToast(null), tom === 'erro' ? 6000 : 3200)
+  }, [])
+
+  const logout = useCallback(() => {
+    salvarToken(null)
+    setUsuario(null)
+  }, [])
+
+  // Sessão expirada em qualquer chamada -> volta para o login
+  useEffect(() => {
+    quandoSessaoExpirar(() => {
+      logout()
+      showToast('Sua sessão expirou. Entre novamente.', 'erro')
+    })
+  }, [logout, showToast])
+
+  // Recupera a sessão salva ao abrir o sistema
+  useEffect(() => {
+    if (usuario !== undefined) return
+    get('/auth/eu')
+      .then(setUsuario)
+      .catch(() => logout())
+  }, [usuario, logout])
+
+  async function login(email, senha) {
+    const { token, usuario: u } = await post('/auth/login', { email, senha })
+    salvarToken(token)
+    setUsuario(u)
+    return u
   }
 
-  function updateAvailability(volunteerId, availability) {
-    setVolunteers((prev) =>
-      prev.map((v) => (v.id === volunteerId ? { ...v, availability } : v)),
-    )
-    showToast('Disponibilidade salva com sucesso.')
+  async function atualizarUsuario() {
+    const u = await get('/auth/eu')
+    setUsuario(u)
+    return u
   }
 
-  function regenerateSchedule(actionId, date) {
-    const action = actions.find((a) => a.id === actionId)
-    if (!action) return
-    const result = generateSchedule(action, date, volunteers)
-    setSchedules((prev) => ({ ...prev, [`${actionId}_${date}`]: result }))
-    showToast('Escala gerada com base na disponibilidade dos voluntários.')
-  }
-
-  function addVolunteer(newVolunteer) {
-    const id = `v${volunteers.length + 1}`
-    setVolunteers([...volunteers, { id, ...newVolunteer }])
-  }
-
-  function updateVolunteer(id, updatedData) {
-    setVolunteers(volunteers.map(v => v.id === id ? { ...v, ...updatedData } : v))
-  }
-
-  function removeVolunteer(id) {
-    // Em vez de deletar de fato, apenas mudamos o status para Inativo (Desativar)
-    setVolunteers(volunteers.map(v => v.id === id ? { ...v, status: 'Inativo' } : v))
-  }
-
-  function addAction(newAction) {
-    const id = `a${actions.length + 1}`
-    // Se o usuário não colocar turnos, criamos um array vazio para não quebrar o map()
-    setActions([...actions, { id, shiftsTemplate: [], ...newAction }])
-  }
-
-  function updateAction(id, updatedData) {
-    setActions(actions.map(a => a.id === id ? { ...a, ...updatedData } : a))
-  }
-
-  function removeAction(id) {
-    setActions(actions.filter(a => a.id !== id))
-  }
+  const role = usuario ? (usuario.perfil === 'ADMINISTRADOR' ? 'admin' : 'voluntario') : null
+  const currentUser = usuario
+    ? { name: usuario.nome, roleLabel: ROTULO_PERFIL[usuario.perfil], email: usuario.email }
+    : null
 
   const value = {
+    usuario,
+    verificandoSessao: usuario === undefined,
     role,
-    setRole,
-    volunteers,
-    actions,
-    schedules,
-    currentVolunteer,
     currentUser,
-    updateAvailability,
-    regenerateSchedule,
+    login,
+    logout,
+    atualizarUsuario,
     toast,
     showToast,
-    addVolunteer,
-    updateVolunteer,
-    removeVolunteer,
-    addAction,
-    updateAction,
-    removeAction
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

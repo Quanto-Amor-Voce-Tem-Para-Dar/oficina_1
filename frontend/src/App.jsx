@@ -2,6 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import { useApp } from './context/AppContext'
+import { Carregando } from './components/Estado'
 
 import Login from './pages/Login'
 
@@ -18,8 +19,16 @@ import VolEscala from './pages/voluntario/MinhaEscala'
 import VolHoras from './pages/voluntario/Horas'
 
 export default function App() {
-  // Assumindo que 'role' pode ser 'admin', 'voluntario' ou null (deslogado)
-  const { role } = useApp()
+  // 'role' é 'admin', 'voluntario' ou null (deslogado)
+  const { role, verificandoSessao } = useApp()
+
+  if (verificandoSessao) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f5f6fb]">
+        <Carregando texto="Abrindo o sistema..." />
+      </div>
+    )
+  }
 
   // Componente de proteção de rotas
   const ProtectedRoute = ({ children, allowedRole }) => {

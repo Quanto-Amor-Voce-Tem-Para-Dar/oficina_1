@@ -1,15 +1,15 @@
 import React, { useState } from 'react'
-import { Menu, ChevronDown, User, LogOut, Check } from 'lucide-react'
+import { Menu, ChevronDown, User, LogOut } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
 
 export default function Topbar({ onOpenMenu }) {
-  const { role, setRole, currentUser, showToast } = useApp()
+  const { logout, currentUser, showToast } = useApp()
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
 
   function handleLogout() {
-    setRole(null)
+    logout()
     setOpen(false)
     showToast('Sessão encerrada.')
     navigate('/login')
@@ -52,6 +52,7 @@ export default function Topbar({ onOpenMenu }) {
               <div className="border-b border-slate-100 px-4 py-3">
                 <p className="text-[12px] font-medium text-slate-400">Logado como</p>
                 <p className="text-[14px] font-bold text-navy-900">{currentUser.name}</p>
+                <p className="text-[12px] text-slate-500">{currentUser.email}</p>
                 <p className="text-[12px] text-slate-500">{currentUser.roleLabel}</p>
               </div>
               <button

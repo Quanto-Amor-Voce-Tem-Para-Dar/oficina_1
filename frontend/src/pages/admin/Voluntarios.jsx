@@ -1,223 +1,294 @@
 import React, { useMemo, useState } from 'react'
-import { Users, Search, Plus, Edit2, Trash2 } from 'lucide-react'
+import { Users, Search, Plus, Edit2, UserX, UserCheck, Eye } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
+import StatusBadge from '../../components/StatusBadge'
+import Modal, { campo, rotulo, botaoPrimario, botaoSecundario } from '../../components/Modal'
+import { Carregando, Erro, Vazio } from '../../components/Estado'
 import { useApp } from '../../context/AppContext'
-import { totalHoursFor } from '../../utils/schedule'
-import { formatDateBR } from '../../utils/date'
+import useCarregar from '../../hooks/useCarregar'
+import { get, post, put, del, mensagemDeErro } from '../../api'
+import { formatDateBR, formatHours, iniciais, DAY_LABELS } from '../../utils/date'
 
-const teamTone = {
-  Logística: 'bg-sky-50 text-sky-700',
-  Atendimento: 'bg-leaf-50 text-leaf-600',
-  Apoio: 'bg-violet-50 text-violet-700',
+const FORM_VAZIO = { nome: '', email: '', senha: '', perfil: 'VOLUNTARIO', status: 'ATIVO' }
+
+function DetalhesVoluntario({ usuario, onClose }) {
+  const { dados, carregando, erro } = useCarregar(
+    () => Promise.all([get(`/usuarios/${usuario.id_usuario}/disponibilidade`), get(`/usuarios/${usuario.id_usuario}/historico`)]),
+    [usuario.id_usuario],
+  )
+  const [disponibilidade, historico] = dados || [[], { participacoes: [] }]
+
+  return (
+    <Modal title={usuario.nome} onClose={onClose} largura="max-w-2xl">
+      <p className="-mt-2 mb-4 text-[13px] text-slate-500">
+        {usuario.email} · cadastrado em {formatDateBR(usuario.criado_em)} · {formatHours(usuario.horas_acumuladas)} acumuladas
+      </p>
+      {carregando ? (
+        <Carregando />
+      ) : erro ? (
+        <Erro erro={erro} />
+      ) : (
+        <div className="space-y-5">
+          <section>
+            <h3 className="mb-2 text-[14px] font-bold text-navy-900">Disponibilidade semanal</h3>
+            {disponibilidade.length === 0 ? (
+              <p className="text-[13px] text-slate-500">Não informada.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {disponibilidade.map((d) => (
+                  <li key={d.id_disponibilidade} className="rounded-md bg-slate-100 px-2.5 py-1 text-[12.5px] text-slate-700">
+                    {DAY_LABELS[d.dia_semana]} · {d.hora_inicio}–{d.hora_fim}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section>
+            <h3 className="mb-2 text-[14px] font-bold text-navy-900">Histórico de participação</h3>
+            {historico.participacoes.length === 0 ? (
+              <p className="text-[13px] text-slate-500">Nenhuma participação em escalas confirmadas.</p>
+            ) : (
+              <div className="divide-y divide-slate-100 rounded-lg border border-slate-100">
+                {historico.participacoes.map((p) => (
+                  <div key={p.id_atribuicao} className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-[13px]">
+                    <div>
+                      <p className="font-medium text-navy-900">{p.acao}</p>
+                      <p className="text-[12px] text-slate-500">
+                        {formatDateBR(p.data)} · {p.hora_inicio.slice(0, 5)}–{p.hora_fim.slice(0, 5)} · {formatHours(p.horas)}
+                      </p>
+                    </div>
+                    <StatusBadge status={p.status_presenca} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+    </Modal>
+  )
 }
 
 export default function Voluntarios() {
-  const { volunteers, actions, schedules, showToast, updateVolunteer, addVolunteer, removeVolunteer } = useApp()
+  const { showToast, usuario: eu } = useApp()
   const [query, setQuery] = useState('')
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingVolunteer, setEditingVolunteer] = useState(null)
+  const [filtroPerfil, setFiltroPerfil] = useState('VOLUNTARIO')
+  const [editando, setEditando] = useState(null) // null = fechado | {} = novo | usuario = edição
+  const [detalhes, setDetalhes] = useState(null)
+  const [form, setForm] = useState(FORM_VAZIO)
+  const [erroForm, setErroForm] = useState('')
+  const [salvando, setSalvando] = useState(false)
 
-  // Estados do formulário
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    team: 'Apoio',
-    status: 'Ativo',
-  })
+  const { dados: usuarios, carregando, erro, recarregar } = useCarregar(() => get('/usuarios'))
 
-  const filtered = useMemo(() => {
+  const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return volunteers
-    return volunteers.filter(
-      (v) => v.name.toLowerCase().includes(q) || v.team.toLowerCase().includes(q),
+    return (usuarios || []).filter(
+      (u) =>
+        (!filtroPerfil || u.perfil === filtroPerfil) &&
+        (!q || u.nome.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)),
     )
-  }, [volunteers, query])
+  }, [usuarios, query, filtroPerfil])
 
-  const handleOpenModal = (volunteer = null) => {
-    if (volunteer) {
-      setEditingVolunteer(volunteer)
-      setFormData({
-        name: volunteer.name,
-        email: volunteer.email,
-        phone: volunteer.phone,
-        team: volunteer.team,
-        status: volunteer.status || 'Ativo',
-      })
-    } else {
-      setEditingVolunteer(null)
-      setFormData({ name: '', email: '', phone: '', team: 'Apoio', status: 'Ativo' })
-    }
-    setIsModalOpen(true)
+  function abrir(usuario = {}) {
+    setEditando(usuario)
+    setErroForm('')
+    setForm(usuario.id_usuario ? { ...FORM_VAZIO, ...usuario, senha: '' } : { ...FORM_VAZIO, perfil: filtroPerfil || 'VOLUNTARIO' })
   }
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false)
-    setEditingVolunteer(null)
-  }
-
-  const handleSubmit = (e) => {
+  async function salvar(e) {
     e.preventDefault()
-    if (editingVolunteer) {
-      updateVolunteer(editingVolunteer.id, formData)
-      showToast('Voluntário atualizado com sucesso!')
-    } else {
-      addVolunteer({ ...formData, joinedAt: new Date().toISOString() })
-      showToast('Voluntário cadastrado com sucesso!')
+    setSalvando(true)
+    setErroForm('')
+    try {
+      const corpo = { nome: form.nome, email: form.email, perfil: form.perfil, status: form.status }
+      if (form.senha) corpo.senha = form.senha
+      if (editando.id_usuario) {
+        await put(`/usuarios/${editando.id_usuario}`, corpo)
+        showToast('Cadastro atualizado com sucesso!')
+      } else {
+        await post('/usuarios', corpo)
+        showToast('Cadastro realizado! Passe o e-mail e a senha para a pessoa entrar no sistema.')
+      }
+      setEditando(null)
+      recarregar()
+    } catch (err) {
+      setErroForm(mensagemDeErro(err))
+    } finally {
+      setSalvando(false)
     }
-    handleCloseModal()
   }
 
-  const handleDeactivate = (id) => {
-    if (window.confirm('Tem certeza que deseja desativar/remover este voluntário?')) {
-      removeVolunteer(id)
-      showToast('Voluntário removido com sucesso.')
+  async function alternarStatus(u) {
+    const desativar = u.status === 'ATIVO'
+    if (desativar && !window.confirm(`Desativar ${u.nome}? A pessoa não poderá mais entrar nem ser escalada (o histórico é mantido).`)) return
+    try {
+      if (desativar) await del(`/usuarios/${u.id_usuario}`)
+      else await put(`/usuarios/${u.id_usuario}`, { status: 'ATIVO' })
+      showToast(desativar ? 'Cadastro desativado.' : 'Cadastro reativado.')
+      recarregar()
+    } catch (err) {
+      showToast(mensagemDeErro(err), 'erro')
     }
   }
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-        <PageHeader
-          icon={Users}
-          title="Voluntários"
-          subtitle="Membros cadastrados no projeto e suas equipes."
-        />
-        <button
-          onClick={() => handleOpenModal()}
-          className="mt-4 sm:mt-0 flex items-center gap-2 rounded-lg bg-navy-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-navy-800"
-        >
-          <Plus size={16} />
-          Novo Voluntário
-        </button>
-      </div>
+      <PageHeader
+        icon={Users}
+        title="Voluntários"
+        subtitle="Membros cadastrados no projeto e seus perfis de acesso."
+        action={
+          <button onClick={() => abrir()} className={botaoPrimario}>
+            <Plus size={16} />
+            Novo cadastro
+          </button>
+        }
+      />
 
-      <div className="mb-4 flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 sm:max-w-sm">
-        <Search size={16} className="text-slate-400" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar por nome ou equipe"
-          className="w-full text-[13.5px] outline-none placeholder:text-slate-400"
-        />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 sm:max-w-sm">
+          <Search size={16} className="text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nome ou e-mail"
+            className="w-full text-[13.5px] outline-none placeholder:text-slate-400"
+          />
+        </div>
+        <select value={filtroPerfil} onChange={(e) => setFiltroPerfil(e.target.value)} className="focus-ring rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-[13.5px]">
+          <option value="VOLUNTARIO">Voluntários</option>
+          <option value="ADMINISTRADOR">Administradores</option>
+          <option value="">Todos</option>
+        </select>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-soft">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-[13.5px]">
-            <thead>
-              <tr className="text-[12.5px] font-semibold text-slate-500">
-                <th className="px-5 py-3">Nome</th>
-                <th className="px-5 py-3">Equipe</th>
-                <th className="px-5 py-3">Contato</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Horas no semestre</th>
-                <th className="px-5 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((v) => (
-                <tr key={v.id} className="border-t border-slate-100">
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-100 text-[12px] font-semibold text-brand-700">
-                        {v.name
-                          .split(' ')
-                          .slice(0, 2)
-                          .map((p) => p[0])
-                          .join('')}
-                      </span>
-                      <span className="font-medium text-navy-900">{v.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex rounded-md px-2.5 py-1 text-[12px] font-medium ${teamTone[v.team] || 'bg-slate-100 text-slate-700'}`}>
-                      {v.team}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-slate-600">
-                    <div>{v.email}</div>
-                    <div className="text-slate-400">{v.phone}</div>
-                  </td>
-                  <td className="px-5 py-4">
-                     <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wider ${v.status === 'Inativo' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                      {v.status || 'Ativo'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 font-medium text-navy-900">
-                    {totalHoursFor(v.id, v, actions, schedules)}h
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => handleOpenModal(v)} className="p-1.5 text-slate-400 hover:text-brand-600 focus-ring rounded">
-                         <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => handleDeactivate(v.id)} className="p-1.5 text-slate-400 hover:text-red-600 focus-ring rounded">
-                         <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+        {carregando && !usuarios ? (
+          <Carregando />
+        ) : erro ? (
+          <div className="p-5">
+            <Erro erro={erro} onTentar={recarregar} />
+          </div>
+        ) : filtrados.length === 0 ? (
+          <Vazio>Nenhum cadastro encontrado.</Vazio>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[13.5px]">
+              <thead>
+                <tr className="text-[12.5px] font-semibold text-slate-500">
+                  <th className="px-5 py-3">Nome</th>
+                  <th className="px-5 py-3">Perfil</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Desde</th>
+                  <th className="px-5 py-3">Horas</th>
+                  <th className="px-5 py-3 text-right">Ações</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtrados.map((u) => (
+                  <tr key={u.id_usuario} className="border-t border-slate-100">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-[12px] font-semibold text-brand-700">
+                          {iniciais(u.nome)}
+                        </span>
+                        <div>
+                          <p className="font-medium text-navy-900">{u.nome}</p>
+                          <p className="text-[12.5px] text-slate-500">{u.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={u.perfil} />
+                    </td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={u.status} />
+                    </td>
+                    <td className="px-5 py-4 text-slate-600">{formatDateBR(u.criado_em)}</td>
+                    <td className="px-5 py-4 font-medium text-navy-900">{formatHours(u.horas_acumuladas)}</td>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setDetalhes(u)} title="Ver disponibilidade e histórico" className="focus-ring rounded p-1.5 text-slate-400 hover:text-brand-600">
+                          <Eye size={16} />
+                        </button>
+                        <button onClick={() => abrir(u)} title="Editar" className="focus-ring rounded p-1.5 text-slate-400 hover:text-brand-600">
+                          <Edit2 size={16} />
+                        </button>
+                        {u.id_usuario !== eu.id_usuario && (
+                          <button
+                            onClick={() => alternarStatus(u)}
+                            title={u.status === 'ATIVO' ? 'Desativar' : 'Reativar'}
+                            className={`focus-ring rounded p-1.5 text-slate-400 ${u.status === 'ATIVO' ? 'hover:text-red-600' : 'hover:text-leaf-600'}`}
+                          >
+                            {u.status === 'ATIVO' ? <UserX size={16} /> : <UserCheck size={16} />}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Modal de Cadastro/Edição */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold text-navy-900">
-              {editingVolunteer ? 'Editar Voluntário' : 'Novo Voluntário'}
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
+      {editando && (
+        <Modal title={editando.id_usuario ? 'Editar cadastro' : 'Novo cadastro'} onClose={() => setEditando(null)}>
+          <form onSubmit={salvar} className="space-y-4">
+            <div>
+              <label className={rotulo}>Nome completo</label>
+              <input required maxLength={100} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className={campo} />
+            </div>
+            <div>
+              <label className={rotulo}>E-mail (de preferência o institucional)</label>
+              <input required type="email" maxLength={100} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={campo} />
+            </div>
+            <div>
+              <label className={rotulo}>{editando.id_usuario ? 'Nova senha (deixe em branco para manter)' : 'Senha inicial'}</label>
+              <input
+                type="text"
+                minLength={6}
+                required={!editando.id_usuario}
+                value={form.senha}
+                onChange={(e) => setForm({ ...form, senha: e.target.value })}
+                className={campo}
+                placeholder="mínimo 6 caracteres"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Nome Completo</label>
-                <input required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-brand-500" />
+                <label className={rotulo}>Perfil</label>
+                <select value={form.perfil} onChange={(e) => setForm({ ...form, perfil: e.target.value })} className={campo}>
+                  <option value="VOLUNTARIO">Voluntário</option>
+                  <option value="ADMINISTRADOR">Administrador</option>
+                </select>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">E-mail</label>
-                  <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-brand-500" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Telefone</label>
-                  <input required value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-brand-500" />
-                </div>
+              <div>
+                <label className={rotulo}>Status</label>
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={campo}>
+                  <option value="ATIVO">Ativo</option>
+                  <option value="INATIVO">Inativo</option>
+                </select>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Equipe</label>
-                  <select value={formData.team} onChange={(e) => setFormData({...formData, team: e.target.value})} className="w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-brand-500">
-                    <option value="Apoio">Apoio</option>
-                    <option value="Logística">Logística</option>
-                    <option value="Atendimento">Atendimento</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
-                  <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} className="w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-brand-500">
-                    <option value="Ativo">Ativo</option>
-                    <option value="Inativo">Inativo</option>
-                  </select>
-                </div>
-              </div>
+            {erroForm && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{erroForm}</p>}
 
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={handleCloseModal} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">Cancelar</button>
-                <button type="submit" className="rounded-lg bg-navy-900 px-4 py-2 text-sm font-medium text-white hover:bg-navy-800">
-                  {editingVolunteer ? 'Salvar Alterações' : 'Cadastrar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setEditando(null)} className={botaoSecundario}>
+                Cancelar
+              </button>
+              <button type="submit" disabled={salvando} className={botaoPrimario}>
+                {editando.id_usuario ? 'Salvar alterações' : 'Cadastrar'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
+
+      {detalhes && <DetalhesVoluntario usuario={detalhes} onClose={() => setDetalhes(null)} />}
     </div>
   )
 }
-

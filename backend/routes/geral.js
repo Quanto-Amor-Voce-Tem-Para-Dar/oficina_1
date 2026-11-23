@@ -3,6 +3,7 @@
 //   GET    /api/painel                   (admin) números da tela inicial
 //   GET    /api/notificacoes             admin: todas | voluntário: as suas
 //   GET    /api/auditoria                (admin) últimas operações
+//   GET    /api/google/conta             e-mail da conta do projeto (para o voluntário compartilhar a agenda)
 //   GET    /api/google/status            (admin) a conta do projeto está conectada?
 //   GET    /api/google/conectar          (admin) devolve a URL de login do Google
 //   GET    /api/google/oauth2callback    (Google redireciona para cá)
@@ -44,6 +45,12 @@ routes.get('/google/oauth2callback', async (req, res) => {
 });
 
 routes.use(exigirLogin);
+
+// Para o voluntário saber com qual conta compartilhar a agenda (só o e-mail, nada sensível)
+routes.get('/google/conta', async (req, res) => {
+    const { conectado, contaEmail } = await google.status();
+    res.json({ conectado, contaEmail: conectado ? contaEmail : null });
+});
 
 routes.get('/google/status', exigirAdmin, async (req, res) => {
     res.json(await google.status());

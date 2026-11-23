@@ -1,53 +1,60 @@
-import React, { useMemo } from 'react'
+import React from 'react'
 import { Clock } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
-import { useApp } from '../../context/AppContext'
-import { totalHoursFor, upcomingShiftsFor } from '../../utils/schedule'
-import { formatDateBR, durationHours } from '../../utils/date'
+import StatusBadge from '../../components/StatusBadge'
+import { Carregando, Erro, Vazio } from '../../components/Estado'
+import useCarregar from '../../hooks/useCarregar'
+import { get } from '../../api'
+import { formatDateBR, formatHours, hhmm } from '../../utils/date'
 
 export default function VolHoras() {
-  const { currentVolunteer, actions, schedules } = useApp()
-  const total = totalHoursFor(currentVolunteer.id, currentVolunteer, actions, schedules)
-
-  const confirmedShifts = useMemo(
-    () => upcomingShiftsFor(currentVolunteer.id, actions, schedules).filter((s) => s.status === 'Confirmado'),
-    [currentVolunteer, actions, schedules],
-  )
+  const { dados, carregando, erro, recarregar } = useCarregar(() => get('/horas'))
 
   return (
     <div>
-      <PageHeader icon={Clock} title="Horas" subtitle="Seu histórico de horas de voluntariado." />
+      <PageHeader icon={Clock} title="Horas" subtitle="Seu histórico de participação e horas de voluntariado." />
 
-      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-soft">
-        <p className="text-[13px] text-slate-500">Total no semestre</p>
-        <p className="text-[26px] font-bold text-navy-900">{total}h</p>
-        <p className="mt-1 text-[12.5px] text-slate-400">
-          Inclui {currentVolunteer.historicalHours}h registradas antes do sistema entrar em uso.
-        </p>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-soft">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-[15px] font-bold text-navy-900">Turnos confirmados</h2>
-        </div>
-        {confirmedShifts.length === 0 ? (
-          <p className="px-5 py-8 text-center text-[13.5px] text-slate-500">Nenhum turno confirmado ainda.</p>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {confirmedShifts.map((s, i) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3.5 text-[13.5px]">
-                <div>
-                  <p className="font-medium text-navy-900">{s.label}</p>
-                  <p className="text-[12.5px] text-slate-500">
-                    {formatDateBR(s.date)} · {s.actionTitle}
-                  </p>
-                </div>
-                <span className="font-semibold text-navy-900">{durationHours(s.start, s.end)}h</span>
-              </div>
-            ))}
+      {carregando && !dados ? (
+        <Carregando />
+      ) : erro ? (
+        <Erro erro={erro} onTentar={recarregar} />
+      ) : (
+        <>
+          <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-soft">
+            <p className="text-[13px] text-slate-500">Total acumulado</p>
+            <p className="text-[26px] font-bold text-navy-900">{formatHours(dados.horas_acumuladas)}</p>
+            <p className="mt-1 text-[12.5px] text-slate-400">Soma dos turnos em escalas confirmadas (ausências não contam).</p>
           </div>
-        )}
-      </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-soft">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-[15px] font-bold text-navy-900">Participações</h2>
+            </div>
+            {dados.participacoes.length === 0 ? (
+              <Vazio>Nenhuma participação registrada ainda.</Vazio>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {dados.participacoes.map((p) => (
+                  <div key={p.id_atribuicao} className="flex items-center justify-between gap-3 px-5 py-3.5 text-[13.5px]">
+                    <div>
+                      <p className="font-medium text-navy-900">{p.acao}</p>
+                      <p className="text-[12.5px] text-slate-500">
+                        {formatDateBR(p.data)} · {hhmm(p.hora_inicio)}–{hhmm(p.hora_fim)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StatusBadge status={p.status_presenca} />
+                      <span className={`w-12 text-right font-semibold ${p.status_presenca === 'AUSENTE' ? 'text-slate-300 line-through' : 'text-navy-900'}`}>
+                        {formatHours(p.horas)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }

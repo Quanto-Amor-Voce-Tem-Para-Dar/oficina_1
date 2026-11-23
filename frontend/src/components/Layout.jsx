@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { useApp } from '../context/AppContext'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, AlertTriangle } from 'lucide-react'
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -19,9 +19,18 @@ export default function Layout({ children }) {
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg bg-navy-900 px-4 py-3 text-[13.5px] text-white shadow-lg">
-          <CheckCircle2 size={16} className="text-leaf-500" />
-          {toast}
+        <div
+          role="status"
+          className={`fixed bottom-6 left-1/2 z-[60] flex max-w-[90vw] -translate-x-1/2 items-center gap-2 rounded-lg px-4 py-3 text-[13.5px] text-white shadow-lg ${
+            toast.tom === 'erro' ? 'bg-rose-600' : 'bg-navy-900'
+          }`}
+        >
+          {toast.tom === 'erro' ? (
+            <AlertTriangle size={16} className="shrink-0" />
+          ) : (
+            <CheckCircle2 size={16} className="shrink-0 text-leaf-500" />
+          )}
+          {toast.message}
         </div>
       )}
     </div>
