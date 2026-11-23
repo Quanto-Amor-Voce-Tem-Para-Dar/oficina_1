@@ -92,3 +92,5 @@ credentials.json
 pontos.json
 token.json
 email.txt
+# Vercel
+.vercel

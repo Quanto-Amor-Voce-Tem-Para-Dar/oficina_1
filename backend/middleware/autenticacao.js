@@ -1,69 +1,55 @@
-const fs = require('fs');
-const { google } = require('googleapis');
-const { CREDENTIALS_PATH, TOKEN_PATH } = require('../config');
+// Login dos usuários do sistema (RF19) e restrição por perfil (RF20 / RNF03).
+// O front manda o token no cabeçalho:  Authorization: Bearer <token>
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET, JWT_EXPIRA_EM } = require('../config');
+const { consulta } = require('../db/conexao');
+const { ErroApi } = require('./erros');
 
-function loadClientCredentials() {
-    const content = fs.readFileSync(CREDENTIALS_PATH, 'utf8');
-    const keys = JSON.parse(content);
-    const config = keys.installed || keys.web;
-
-    if (!config) {
-        throw new Error('Formato inválido em credentials.json (esperado "web" ou "installed").');
-    }
-
-    return new google.auth.OAuth2(
-        config.client_id,
-        config.client_secret,
-        config.redirect_uris[0]
-    );
+function gerarToken(usuario) {
+    return jwt.sign({ id: usuario.id_usuario, perfil: usuario.perfil }, JWT_SECRET, { expiresIn: JWT_EXPIRA_EM });
 }
 
-function getAuthClient() {
-    if (!fs.existsSync(TOKEN_PATH)) return null;
+// Exige um usuário logado e ATIVO. Coloca os dados dele em req.usuario.
+async function exigirLogin(req, res, next) {
+    if (req.usuario) return next(); // já validado por outro router nesta mesma requisição
 
-    const oAuth2Client = loadClientCredentials();
-    oAuth2Client.setCredentials(JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8')));
+    const [tipo, token] = (req.headers.authorization || '').split(' ');
+    if (tipo !== 'Bearer' || !token) throw new ErroApi(401, 'Você precisa entrar no sistema.');
 
-    oAuth2Client.on('tokens', (novos) => {
-        const atual = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
-        fs.writeFileSync(TOKEN_PATH, JSON.stringify({ ...atual, ...novos }, null, 2));
-    });
-
-    return oAuth2Client;
-}
-
-// O token de login vence em 1h, mas se o refresh_token ainda vale, a biblioteca renova sozinha.
-// Assim: 
-//      - access_token ainda válido -> responde na hora, sem requisição à API do Google;
-//      - vencido -> renova com o refresh_token;
-//      - refresh_token vencido/revogado ou ausente -> dá erro e precisa fazer login.
-async function loginValido() {
-    const auth = getAuthClient();
-    if (!auth) return false;
-
+    let dados;
     try {
-        await auth.getAccessToken();
-        return true;
-    } catch (error) {
-        return false;
+        dados = jwt.verify(token, JWT_SECRET);
+    } catch {
+        throw new ErroApi(401, 'Sessão expirada. Entre novamente.');
     }
-}
 
-function getCalendar() {
-    const auth = getAuthClient();
-    return auth && google.calendar({ version: 'v3', auth });
-}
+    const [usuario] = await consulta(
+        'SELECT id_usuario, nome, email, perfil, status FROM Usuario WHERE id_usuario = ?',
+        [dados.id]
+    );
+    if (!usuario || usuario.status !== 'ATIVO') throw new ErroApi(401, 'Usuário inativo ou removido.');
 
-function exigirLogin(req, res, next) {
-    const calendar = getCalendar();
-    if (!calendar) {
-        return res.status(401).json({
-            status: 'ERRO',
-            mensagem: `Você precisa se autenticar primeiro! Acesse: http://localhost:${PORTA}/auth`,
-        });
-    }
-    req.calendar = calendar;
+    req.usuario = usuario;
     next();
 }
 
-module.exports = { loadClientCredentials, getAuthClient, getCalendar, loginValido, exigirLogin };
+function exigirAdmin(req, res, next) {
+    if (req.usuario?.perfil !== 'ADMINISTRADOR') {
+        throw new ErroApi(403, 'Apenas administradores podem fazer isso.');
+    }
+    next();
+}
+
+const ehAdmin = (usuario) => usuario?.perfil === 'ADMINISTRADOR';
+
+// O próprio usuário ou um administrador (ex.: ver/editar a disponibilidade de alguém).
+function exigirProprioOuAdmin(param = 'id') {
+    return (req, res, next) => {
+        if (!ehAdmin(req.usuario) && Number(req.params[param]) !== req.usuario.id_usuario) {
+            throw new ErroApi(403, 'Você só pode acessar os seus próprios dados.');
+        }
+        next();
+    };
+}
+
+module.exports = { gerarToken, exigirLogin, exigirAdmin, exigirProprioOuAdmin, ehAdmin };

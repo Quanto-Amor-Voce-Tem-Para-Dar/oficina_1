@@ -1,12 +1,14 @@
 {
-  "name": "callendar",
+  "name": "quanto-amor-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "API do sistema de gestão de voluntários e escalas do projeto Quanto Amor Você Tem Para Dar?",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "db:preparar": "node db/preparar.js",
+    "db:demo": "node db/preparar.js --demo",
+    "test": "node --test"
   },
   "author": "Gabriel Afini",
   "license": "ISC",
@@ -14,9 +16,16 @@
     "nodemon": "^3.1.14"
   },
   "dependencies": {
-    "dotenv": "^18.0.7",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
     "express": "^5.3.0",
-    "fs": "^0.0.1-security",
-    "googleapis": "^185.0.0"
+    "googleapis": "^185.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.6",
+    "nodemailer": "^10.6.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

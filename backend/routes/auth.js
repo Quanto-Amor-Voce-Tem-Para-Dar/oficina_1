@@ -1,45 +1,47 @@
-const fs = require('fs');
+// POST /api/auth/login   GET /api/auth/eu   PUT /api/auth/senha
 const express = require('express');
-const { SCOPES, TOKEN_PATH } = require('../config');
-const { loadClientCredentials } = require('../middleware/autenticacao');
+const bcrypt = require('bcryptjs');
+const { consulta } = require('../db/conexao');
+const { gerarToken, exigirLogin } = require('../middleware/autenticacao');
+const { ErroApi } = require('../middleware/erros');
+const { validar, regras } = require('../middleware/validar');
 
 const routes = express.Router();
 
-// Rota para iniciar a autenticação (Redireciona o usuário para o Google)
-routes.get('/', (req, res) => {
-    try {
-        const oAuth2Client = loadClientCredentials();
-        const authUrl = oAuth2Client.generateAuthUrl({
-            access_type: 'offline',
-            prompt: 'consent',
-            scope: SCOPES,
-        });
-        res.redirect(authUrl);
-    } catch (error) {
-        console.error('Erro ao carregar credenciais:', error);
-        res.status(500).send('Erro ao configurar credenciais OAuth.');
-    }
+const publico = (u) => ({
+    id_usuario: u.id_usuario, nome: u.nome, email: u.email, perfil: u.perfil, status: u.status,
+    horas_acumuladas: u.horas_acumuladas, criado_em: u.criado_em,
 });
 
-// Rota de Callback (Para onde o Google redireciona após o login)
-routes.get('/oauth2callback', async (req, res) => {
-    const code = req.query.code;
-    if (!code) {
-        return res.status(400).send('Código de autorização não encontrado.');
-    }
+routes.post('/login', async (req, res) => {
+    validar(req.body, { email: [regras.obrigatorio, regras.email], senha: [regras.obrigatorio] });
 
-    try {
-        const oAuth2Client = loadClientCredentials();
-        const { tokens } = await oAuth2Client.getToken(code);
+    const [usuario] = await consulta('SELECT * FROM Usuario WHERE email = ?', [req.body.email.trim().toLowerCase()]);
+    const senhaOk = usuario && (await bcrypt.compare(String(req.body.senha), usuario.senha_hash));
+    if (!senhaOk) throw new ErroApi(401, 'E-mail ou senha incorretos.');
+    if (usuario.status !== 'ATIVO') throw new ErroApi(403, 'Seu cadastro está inativo. Procure a gestão do projeto.');
 
-        // Salva o token em um arquivo JSON para uso futuro
-        fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
-
-        res.redirect('/escala');
-    } catch (error) {
-        console.error('Erro ao recuperar o token:', error);
-        res.status(500).send('Erro na autenticação.');
-    }
+    res.json({ token: gerarToken(usuario), usuario: publico(usuario) });
 });
 
-module.exports = routes;
+routes.get('/eu', exigirLogin, async (req, res) => {
+    const [usuario] = await consulta('SELECT * FROM Usuario WHERE id_usuario = ?', [req.usuario.id_usuario]);
+    res.json(publico(usuario));
+});
+
+routes.put('/senha', exigirLogin, async (req, res) => {
+    validar(req.body, {
+        senhaAtual: [regras.obrigatorio],
+        novaSenha: [regras.obrigatorio, regras.minimo(6)],
+    });
+    const [usuario] = await consulta('SELECT senha_hash FROM Usuario WHERE id_usuario = ?', [req.usuario.id_usuario]);
+    if (!(await bcrypt.compare(String(req.body.senhaAtual), usuario.senha_hash))) {
+        throw new ErroApi(400, 'Senha atual incorreta.');
+    }
+    await consulta('UPDATE Usuario SET senha_hash = ? WHERE id_usuario = ?', [
+        await bcrypt.hash(String(req.body.novaSenha), 10), req.usuario.id_usuario,
+    ]);
+    res.json({ status: 'OK', mensagem: 'Senha alterada com sucesso.' });
+});
+
+module.exports = { routes, publico };

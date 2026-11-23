@@ -1,47 +1,33 @@
-// Bloco = uma permanência do cronograma (dia, horário, vagas e quantos pontos vale).
+// Bloco = um turno pronto para a distribuição (início/fim como Date, vagas e peso em horas).
+const { FUSO } = require('../config');
 
-// A regra de pontuação é escolhida no payload: "pontuacao": { "minutosPorPonto": 60 }
-// 60 = 1 ponto por hora | 30 = 1 ponto a cada 30 minutos. Sem o campo, vale 1 ponto por hora.
-const MINUTOS_POR_PONTO_PADRAO = 60;
-const MINUTOS_POR_PONTO_ACEITOS = [30, 60];
+const DIAS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
 
-function lerMinutosPorPonto(payload) {
-    return payload.pontuacao?.minutosPorPonto ?? MINUTOS_POR_PONTO_PADRAO;
-}
+// "2026-11-28" + "08:00:00" -> Date no horário de Brasília
+const paraDate = (data, hora) => new Date(`${data}T${String(hora).slice(0, 8).padEnd(8, ':00')}${FUSO}`);
 
-// Cada unidade começada conta (por hora: 1h50 = 2 pontos), e toda permanência vale pelo menos 1 ponto.
-function calcularPontos(minutos, minutosPorPonto) {
-    return Math.max(1, Math.ceil(minutos / minutosPorPonto));
-}
+// Dia da semana de uma data ("2026-11-28" -> "SAB"), sem depender do fuso do servidor.
+const diaDaSemana = (data) => DIAS[new Date(`${data}T12:00:00Z`).getUTCDay()];
 
-function achatarBlocos(payload) {
-    const blocos = [];
-    const minutosPorPonto = lerMinutosPorPonto(payload);
-
-    for (const dia of payload.cronograma) {
-        dia.horarios.forEach((h, i) => {
-            const inicio = new Date(`${dia.data}T${h.start}`);
-            const fim = new Date(`${dia.data}T${h.end}`);
-            const minutos = (fim - inicio) / 60000;
-
-            blocos.push({
-                id: `${dia.data}#${i}`,
-                data: dia.data,
-                start: h.start,
-                end: h.end,
-                inicio,
-                fim,
-                vagas: Number(h.vagas),
-                pontos: calcularPontos(minutos, minutosPorPonto),
-                alocados: [],
-            });
-        });
-    }
-    return blocos;
+function turnoParaBloco(turno) {
+    const inicio = paraDate(turno.data, turno.hora_inicio);
+    const fim = paraDate(turno.data, turno.hora_fim);
+    return {
+        id: turno.id_turno,
+        turno,
+        data: turno.data,
+        diaSemana: diaDaSemana(turno.data),
+        inicio,
+        fim,
+        vagas: Number(turno.qtd_voluntarios_necessaria),
+        // Peso do bloco = duração em horas (antes eram "pontos"; a equidade agora é por horas)
+        pontos: (fim - inicio) / 3600000,
+        alocados: [],
+    };
 }
 
 function sobrepoe(aIni, aFim, bIni, bFim) {
     return aIni < bFim && bIni < aFim;
 }
 
-module.exports = { MINUTOS_POR_PONTO_ACEITOS, lerMinutosPorPonto, calcularPontos, achatarBlocos, sobrepoe };
+module.exports = { DIAS, paraDate, diaDaSemana, turnoParaBloco, sobrepoe };

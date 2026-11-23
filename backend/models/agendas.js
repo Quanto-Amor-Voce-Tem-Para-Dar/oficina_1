@@ -1,6 +1,5 @@
 // Agendas dos voluntários: quem existe, quando está ocupado e quando está livre para cada bloco.
 const { TIMEZONE, IGNORAR_AGENDA_DO_PROJETO } = require('../config');
-const { sobrepoe } = require('./bloco');
 
 // Lista as agendas compartilhadas com a conta do projeto.
 // Retorna { idDaAgenda: nomeDaAgenda }. O id é o e-mail do voluntário.
@@ -54,19 +53,4 @@ async function buscarOcupados(calendar, ids, timeMin, timeMax) {
     return ocupados;
 }
 
-// Para cada bloco, lista quem está livre (nenhum horário ocupado cruza o bloco)
-function calcularDisponibilidade(blocos, ocupados) {
-    const disponiveis = {};
-
-    for (const bloco of blocos) {
-        disponiveis[bloco.id] = Object.entries(ocupados)
-            .filter(([, busy]) =>
-                busy !== null &&
-                !busy.some((b) => sobrepoe(bloco.inicio, bloco.fim, new Date(b.start), new Date(b.end)))
-            )
-            .map(([id]) => id);
-    }
-    return disponiveis;
-}
-
-module.exports = { loadCalendars, buscarOcupados, calcularDisponibilidade };
+module.exports = { loadCalendars, buscarOcupados };
