@@ -1,84 +1,48 @@
-# Escala de voluntários (back-end Node)
+# Back-end (API)
 
-Lê as agendas dos voluntários no Google Agenda, reparte as permanências de forma equitativa
-(por pontos) e devolve a escala em JSON.
+Node.js + Express 5 + MySQL 8. O passo a passo para rodar está no [README da raiz](../README.md).
 
-## Como rodar
-
-1. `npm install`
-2. Coloque o `credentials.json` (OAuth 2.0 baixado do Google Cloud) na raiz do projeto.
-   O redirect autorizado precisa ser `http://localhost:3000/oauth2callback` e `http://localhost:3000/auth/oauth2callback`.
-3. `npm run dev` (ou `npm start`)
-4. Abra `http://localhost:3000/auth` e faça login com a conta do projeto (cria o `token.json`).
-
-Copie o `.env.example` para `.env` e confira o `GOOGLE_CREDENTIALS_PATH` (precisa terminar em `.json`). Se algo essencial faltar, o servidor avisa ao subir.
-
-## Estrutura
-
-| Pasta | O que tem |
-|---|---|
-| `routes/` | Os caminhos da API: `auth.js` (login Google) e `escala.js` (`POST /escala`, `GET /events`). |
-| `middleware/` | O que roda antes da rota: `autenticacao.js` (exige login), `validarPayload.js`, `payloadDeTeste.js`, `erros.js`. |
-| `models/` | As regras do sistema: `bloco.js` (permanência e pontos), `agendas.js` (Google Agenda e disponibilidade), `distribuicao.js` (algoritmo), `escala.js` (junta tudo). |
-| `database/` | Onde os pontos ficam guardados. Hoje é `database/pontos.json`; para usar um BD, só `database/pontos.js` muda. |
-| `config.js` | Caminhos, porta, fuso, máximo de permanências. |
-
-## API
-
-### `GET /`
-Página inicial: se o login do Google está valendo, redireciona para `/escala`; se não há login ou ele venceu, redireciona para `/auth`.
-
-### `GET /escala`
-Confirma que o login está ativo (e volta para `/auth` se venceu). Para gerar a escala é o `POST /escala`, abaixo.
-
-### `POST /escala`
-
-```json
-{
-  "nomeEscala": "Escala de novembro",
-  "pontuacao": { "minutosPorPonto": 60 },
-  "cronograma": [
-    { "data": "2026-11-03",
-      "horarios": [ { "start": "10:00:00-03:00", "end": "10:20:00-03:00", "vagas": 1 } ] }
-  ]
-}
+```bash
+npm install
+cp .env.example .env     # ajuste JWT_SECRET e o banco
+npm run db:demo          # tabelas + admin + dados de exemplo (ou db:preparar, sem exemplo)
+npm run dev              # http://localhost:3000/api
+npm test                 # testes da lógica (não precisam de banco)
 ```
 
-- `pontuacao.minutosPorPonto` (opcional): `60` = 1 ponto por hora (padrão), `30` = 1 ponto a cada 30 minutos.
-  Cada unidade começada conta e toda permanência vale pelo menos 1 ponto.
-- `?gravar=false` na URL: pré-visualização, não soma os pontos.
+## Rotas principais
 
-Resposta (`200`):
+Todas (exceto o login) exigem `Authorization: Bearer <token>`. Erros vêm como
+`{ "status": "ERRO", "mensagem": "...", "erros": [...] }`.
 
-```json
-{
-  "status": "SUCESSO",
-  "pontosGravados": true,
-  "pontuacao": { "minutosPorPonto": 60 },
-  "nomeEscala": "Escala de novembro",
-  "escalaGerada": [
-    { "data": "2026-11-03", "horarioInicio": "10:00:00-03:00", "horarioFim": "10:20:00-03:00",
-      "vagasRequeridas": 1, "pontos": 1,
-      "voluntariosAlocados": ["voluntario@gmail.com"], "alertaFaltaVagas": false }
-  ],
-  "pontosAcumulados": { "voluntario@gmail.com": 1 }
-}
-```
+| Método e rota | Quem | O que faz |
+|---|---|---|
+| `POST /api/auth/login` | público | `{ email, senha }` → `{ token, usuario }` |
+| `GET /api/auth/eu` · `PUT /api/auth/senha` | logado | dados do usuário · trocar senha |
+| `GET/POST /api/usuarios` · `PUT/DELETE /api/usuarios/:id` | admin | voluntários e admins (DELETE desativa) |
+| `GET/PUT /api/usuarios/:id/disponibilidade` | admin ou o próprio | `{ horarios: [{ dia_semana, hora_inicio, hora_fim }] }` |
+| `GET /api/usuarios/:id/historico` | admin ou o próprio | participações em escalas confirmadas |
+| `GET/POST /api/acoes` · `GET/PUT/DELETE /api/acoes/:id` | admin (GET: logado) | ações |
+| `POST /api/acoes/:id/turnos` · `PUT/DELETE /api/turnos/:id` | admin | turnos |
+| `POST /api/acoes/:id/escala` | admin | gera a PROPOSTA de escala da ação |
+| `GET /api/escalas/:id` · `POST /api/escalas/:id/confirmar` · `DELETE /api/escalas/:id` | admin | ver · confirmar (envia e-mails) · descartar proposta |
+| `POST /api/escalas/:id/atribuicoes` · `DELETE /api/escalas/:id/atribuicoes/:idAtrib` | admin | ajuste manual |
+| `GET /api/turnos/:id/elegiveis` | admin | quem está disponível para o turno |
+| `PATCH /api/atribuicoes/:id/presenca` | admin | `CONFIRMADO` / `PRESENTE` / `AUSENTE` |
+| `GET /api/minha-escala` | logado | turnos confirmados do usuário |
+| `POST /api/atribuicoes/:id/trocas` | voluntário | `{ motivo, id_usuario_destino? }` |
+| `GET /api/trocas` · `POST /api/trocas/:id/analisar` | logado · admin | `{ aprovar: true/false }` |
+| `GET /api/horas` · `GET /api/painel` | logado · admin | horas · números do painel |
+| `GET /api/google/conectar` · `GET /api/google/status` · `DELETE /api/google` | admin | conta Google do projeto |
+| `GET /api/notificacoes` · `GET /api/auditoria` | admin | e-mails enviados · log de operações |
 
-Erros: `400` payload inválido (lista em `erros`), `401` sem login ou login expirado (acessar `/auth`), `500` falha ao ler o Google Agenda.
+## Regras importantes
 
-### `GET /events`
-Rota de teste: faz o mesmo que o `POST /escala`, usando o `payload.json` da raiz.
-
-## Regras da distribuição
-
-1. Blocos mais pesados primeiro; em empate, os mais apertados (poucos voluntários livres para as vagas).
-2. Em cada vaga entra quem tem **menos pontos**; em empate, quem tem **menos horários possíveis**.
-3. Cada voluntário no máximo 1 vez na primeira rodada; depois pode repetir até 2 permanências, sem choque de horário.
-4. Vagas que sobram são rearranjadas trocando voluntários entre blocos, e as que ainda não fecham vêm com `alertaFaltaVagas: true`.
-
-## Falta fazer
-
-- Envio de e-mail (SMTP) para os voluntários confirmarem a escala.
-- Reajuste automático dos turnos recusados quando todos responderem (remover o ponto de quem recusar).
-- Trocar `database/pontos.json` por um banco de dados.
+- **Horas acumuladas** = soma dos turnos em escalas **confirmadas**, sem contar `AUSENTE`.
+  São recalculadas a cada mudança e são o critério de equilíbrio da escala (quem tem menos, entra primeiro).
+- **Elegível para um turno**: o turno cabe na disponibilidade digitada (se houver) **e** não cruza
+  compromisso no Google Agenda (se a agenda estiver compartilhada) **e** a pessoa não está em outro turno
+  confirmado no mesmo horário. Sem disponibilidade digitada e sem agenda compartilhada, não é elegível.
+- O algoritmo de distribuição (`models/distribuicao.js`) reparte em rodadas: primeiro cada um no máximo
+  1 vez, depois até `MAX_PERMANENCIAS`, e no fim tenta rearranjar para preencher vagas vazias.
+- Desistência aprovada marca a atribuição como `AUSENTE` (a vaga reabre e o histórico é mantido).
