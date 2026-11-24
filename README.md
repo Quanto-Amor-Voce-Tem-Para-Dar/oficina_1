@@ -129,27 +129,24 @@ mais um **MySQL na nuvem** (a Vercel não tem MySQL).
 
 ### 1. MySQL gratuito na nuvem
 
-Crie um banco MySQL grátis (ex.: **Aiven** – <https://aiven.io/mysql> – ou **TiDB Cloud Serverless**).
-Copie a URL de conexão, no formato `mysql://usuario:senha@host:porta/banco`.
+Crie um banco MySQL grátis (ex.: **Aiven** – <https://aiven.io/mysql>). Anote a **Service URI**
+(`mysql://usuario:senha@host:porta/banco?ssl-mode=REQUIRED`) e baixe o **CA certificate** (`ca.pem`).
 
-Crie as tabelas rodando **na sua máquina**, apontando para esse banco:
-
-```bash
-cd backend
-DATABASE_URL="mysql://..." DB_SSL=true JWT_SECRET=qualquer npm run db:demo
-```
-
-(Ou `db:preparar` para criar só as tabelas e o admin, sem dados de exemplo.)
+Não precisa criar as tabelas: na primeira vez que a API é acessada na Vercel, ela cria as tabelas e o
+administrador padrão sozinha (e os dados de exemplo, se `DADOS_EXEMPLO=true`).
 
 ### 2. Projeto do back-end
 
-Na Vercel: **Add New → Project** → importe o repositório → **Root Directory: `backend`**.
+Na Vercel: **Add New → Project** → importe o repositório → **Root Directory: `backend`** →
+**Framework Preset: Other**.
 Em **Environment Variables**:
 
 | Variável | Valor |
 |---|---|
 | `DATABASE_URL` | a URL do MySQL na nuvem |
 | `DB_SSL` | `true` |
+| `DB_SSL_CA` | conteúdo do `ca.pem` (Aiven) — cole o arquivo inteiro |
+| `DADOS_EXEMPLO` | `true` para criar voluntários e ações de exemplo (opcional) |
 | `JWT_SECRET` | texto longo e aleatório (**o mesmo** sempre, senão todos são deslogados) |
 | `FRONTEND_URL` | a URL do front na Vercel (preencha depois do passo 3) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | opcionais (Google Agenda) |

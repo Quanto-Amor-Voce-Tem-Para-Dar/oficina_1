@@ -21,6 +21,9 @@ const config = {
     DB_NOME: process.env.DB_NOME || 'quanto_amor',
     // Bancos na nuvem (Aiven, TiDB Cloud...) exigem conexão segura: DB_SSL=true
     DB_SSL: process.env.DB_SSL === 'true',
+    // Certificado da autoridade do banco (Aiven: baixe o "CA certificate" e cole o conteúdo aqui).
+    // Aceita o texto com quebras de linha reais ou com "\n".
+    DB_SSL_CA: process.env.DB_SSL_CA ? process.env.DB_SSL_CA.replace(/\\n/g, '\n') : undefined,
 
     // LOGIN DOS USUÁRIOS (e-mail e senha)
     JWT_SECRET: opcional('JWT_SECRET'),

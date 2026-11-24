@@ -14,10 +14,16 @@ function criarPool() {
         timezone: cfg.FUSO,
         multipleStatements: true,
     };
-    const ssl = cfg.DB_SSL ? { ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: true } } : {};
+    // Bancos na nuvem: conexão segura. O Aiven usa certificado próprio (DB_SSL_CA, o conteúdo do ca.pem).
+    const ssl = cfg.DB_SSL || cfg.DB_SSL_CA
+        ? { ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: true, ...(cfg.DB_SSL_CA ? { ca: cfg.DB_SSL_CA } : {}) } }
+        : {};
 
-    const novo = cfg.DATABASE_URL
-        ? mysql.createPool({ uri: cfg.DATABASE_URL, ...comum, ...ssl })
+    // Tira parâmetros como "?ssl-mode=REQUIRED" que vêm na URL copiada do painel (o SSL é configurado acima)
+    const url = cfg.DATABASE_URL?.split('?')[0];
+
+    const novo = url
+        ? mysql.createPool({ uri: url, ...comum, ...ssl })
         : mysql.createPool({
             host: cfg.DB_HOST,
             port: cfg.DB_PORTA,
