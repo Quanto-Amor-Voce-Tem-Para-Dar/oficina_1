@@ -104,30 +104,50 @@ async function calcularElegiveis(blocos, { idEscalaIgnorar = null } = {}) {
     const confirmados = await compromissosConfirmados(idEscalaIgnorar);
     const { ocupados, avisos } = await ocupadosNoGoogle(voluntarios, blocos);
 
-    const elegiveis = {};
-    for (const bloco of blocos) {
-        elegiveis[bloco.id] = voluntarios
-            .filter((v) => {
-                const horarios = digitadas[v.id_usuario] || [];
-                const email = v.email.toLowerCase();
-                const temAgenda = email in ocupados;
-                const agendaLegivel = temAgenda && ocupados[email] !== null;
+    // Motivo de cada um não poder ir (null = pode). Só diz QUE está ocupado, nunca o compromisso (RNF05).
+    function motivoIndisponivel(v, bloco) {
+        const horarios = digitadas[v.id_usuario] || [];
+        const email = v.email.toLowerCase();
+        const agendaLegivel = email in ocupados && ocupados[email] !== null;
 
-                if (horarios.length === 0 && !agendaLegivel) return false;
-                if (horarios.length > 0 && !cabeNaDisponibilidade(bloco, horarios)) return false;
-                if (agendaLegivel && ocupados[email].some((p) => sobrepoe(bloco.inicio, bloco.fim, p.inicio, p.fim))) {
-                    return false;
-                }
-                if ((confirmados[v.id_usuario] || []).some((c) => sobrepoe(bloco.inicio, bloco.fim, c.inicio, c.fim))) {
-                    return false;
-                }
-                return true;
-            })
-            .map((v) => v.id_usuario);
+        if (horarios.length === 0 && !agendaLegivel) {
+            return 'Não informou disponibilidade nem compartilhou a agenda';
+        }
+        if (horarios.length > 0 && !cabeNaDisponibilidade(bloco, horarios)) {
+            return 'Fora da disponibilidade informada';
+        }
+        if (agendaLegivel && ocupados[email].some((p) => sobrepoe(bloco.inicio, bloco.fim, p.inicio, p.fim))) {
+            return 'Ocupado no Google Agenda';
+        }
+        if ((confirmados[v.id_usuario] || []).some((c) => sobrepoe(bloco.inicio, bloco.fim, c.inicio, c.fim))) {
+            return 'Já está em outro turno neste horário';
+        }
+        return null;
+    }
+
+    // De onde vem a informação de cada voluntário (para o admin entender a decisão)
+    const fontes = Object.fromEntries(voluntarios.map((v) => {
+        const email = v.email.toLowerCase();
+        return [v.id_usuario, {
+            disponibilidade_digitada: (digitadas[v.id_usuario] || []).length > 0,
+            google_agenda: email in ocupados && ocupados[email] !== null,
+        }];
+    }));
+
+    const elegiveis = {};
+    const motivos = {};
+    for (const bloco of blocos) {
+        motivos[bloco.id] = {};
+        elegiveis[bloco.id] = [];
+        for (const v of voluntarios) {
+            const motivo = motivoIndisponivel(v, bloco);
+            if (motivo) motivos[bloco.id][v.id_usuario] = motivo;
+            else elegiveis[bloco.id].push(v.id_usuario);
+        }
     }
 
     const usaramGoogle = Object.keys(ocupados).length;
-    return { voluntarios, elegiveis, avisos, usaramGoogle };
+    return { voluntarios, elegiveis, motivos, fontes, avisos, usaramGoogle };
 }
 
 module.exports = { calcularElegiveis, voluntariosAtivos };

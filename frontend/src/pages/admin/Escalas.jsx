@@ -16,7 +16,7 @@ function AdicionarVoluntario({ escala, turno, onClose, onAdicionado }) {
   const { dados: opcoes, carregando, erro } = useCarregar(() => get(`/turnos/${turno.id_turno}/elegiveis`), [turno.id_turno])
   const [mostrarTodos, setMostrarTodos] = useState(false)
   const jaNoTurno = new Set(turno.atribuidos.map((a) => a.id_usuario))
-  const lista = (opcoes || []).filter((v) => !jaNoTurno.has(v.id_usuario) && (mostrarTodos || v.elegivel))
+  const lista = (opcoes?.voluntarios || []).filter((v) => !jaNoTurno.has(v.id_usuario) && (mostrarTodos || v.elegivel))
 
   async function escolher(v) {
     try {
@@ -39,6 +39,11 @@ function AdicionarVoluntario({ escala, turno, onClose, onAdicionado }) {
         <Erro erro={erro} />
       ) : (
         <>
+          {opcoes.avisos?.map((a, i) => (
+            <div key={i} className="mb-3">
+              <Aviso>{a}</Aviso>
+            </div>
+          ))}
           <label className="mb-3 flex items-center gap-2 text-[13px] text-slate-600">
             <input type="checkbox" checked={mostrarTodos} onChange={(e) => setMostrarTodos(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
             Mostrar também quem não está disponível neste horário
@@ -52,9 +57,14 @@ function AdicionarVoluntario({ escala, turno, onClose, onAdicionado }) {
               {lista.map((v) => (
                 <li key={v.id_usuario}>
                   <button onClick={() => escolher(v)} className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13.5px] hover:bg-slate-50">
-                    <span>
+                    <span className="min-w-0">
                       <span className="font-medium text-navy-900">{v.nome}</span>
                       <span className="ml-2 text-[12px] text-slate-500">{formatHours(v.horas_acumuladas)} acumuladas</span>
+                      <span className="mt-0.5 block text-[11.5px] text-slate-400">
+                        {[v.disponibilidade_digitada && 'disponibilidade digitada', v.google_agenda && 'Google Agenda'].filter(Boolean).join(' + ') ||
+                          'sem informações de horário'}
+                      </span>
+                      {v.motivo && <span className="mt-0.5 block text-[12px] font-medium text-rose-600">{v.motivo}</span>}
                     </span>
                     {v.elegivel ? <StatusBadge status="ATIVO" label="Disponível" /> : <StatusBadge status="AUSENTE" label="Indisponível" />}
                   </button>
@@ -116,7 +126,9 @@ function AnalisarTroca({ idTroca, onClose, onAnalisada }) {
             (troca.destino_disponivel ? (
               <p className="text-leaf-600">✓ {troca.nome_destino} está disponível neste horário.</p>
             ) : (
-              <Aviso>{troca.nome_destino} NÃO está disponível neste horário (pela disponibilidade informada, agenda ou outro turno).</Aviso>
+              <Aviso>
+                {troca.nome_destino} NÃO está disponível neste horário: {troca.destino_motivo?.toLowerCase()}.
+              </Aviso>
             ))}
           {!troca.id_usuario_destino && <Aviso>Se aprovar, a vaga ficará em aberto e você poderá escolher outra pessoa na escala.</Aviso>}
 

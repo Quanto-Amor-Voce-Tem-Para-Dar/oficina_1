@@ -140,10 +140,9 @@ async function adicionarAtribuicao(idEscala, idTurno, idUsuario, usuario) {
 
     // Avisa (sem bloquear) se a pessoa não estava elegível: o admin tem a palavra final.
     const bloco = turnoParaBloco(turno);
-    const { elegiveis } = await calcularElegiveis([bloco]);
-    const aviso = elegiveis[bloco.id].includes(idUsuario)
-        ? null
-        : 'Atenção: este voluntário não está disponível neste horário (disponibilidade, agenda ou outro turno).';
+    const { motivos } = await calcularElegiveis([bloco]);
+    const motivo = motivos[bloco.id][idUsuario];
+    const aviso = motivo ? `Atenção: ${vol.nome} não está disponível neste horário (${motivo.toLowerCase()}).` : null;
 
     const confirmada = escala.status === 'CONFIRMADA';
     await transacao(async (c) => {
@@ -200,10 +199,16 @@ async function elegiveisDoTurno(idTurno) {
     const [turno] = await consulta('SELECT * FROM Turno WHERE id_turno = ?', [idTurno]);
     if (!turno) throw new ErroApi(404, 'Turno não encontrado.');
     const bloco = turnoParaBloco(turno);
-    const { voluntarios, elegiveis } = await calcularElegiveis([bloco]);
-    return voluntarios
-        .map((v) => ({ ...v, elegivel: elegiveis[bloco.id].includes(v.id_usuario) }))
+    const { voluntarios, elegiveis, motivos, fontes, avisos } = await calcularElegiveis([bloco]);
+    const lista = voluntarios
+        .map((v) => ({
+            ...v,
+            elegivel: elegiveis[bloco.id].includes(v.id_usuario),
+            motivo: motivos[bloco.id][v.id_usuario] || null,
+            ...fontes[v.id_usuario],
+        }))
         .sort((a, b) => b.elegivel - a.elegivel || a.horas_acumuladas - b.horas_acumuladas);
+    return { voluntarios: lista, avisos };
 }
 
 // Confirma a escala (RF12): grava, atualiza as horas e avisa todo mundo por e-mail (RF16).

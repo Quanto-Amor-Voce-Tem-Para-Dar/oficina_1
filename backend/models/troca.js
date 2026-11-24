@@ -85,11 +85,12 @@ async function solicitarTroca(idAtribuicao, usuario, { motivo, id_usuario_destin
 }
 
 // Para o admin decidir: o destino está livre nesse horário? (Figura 7: verificar conflitos)
+// Devolve o motivo de o destino NÃO poder ir (null = está livre).
 async function verificarDestino(troca) {
     if (!troca.id_usuario_destino) return null;
     const bloco = turnoParaBloco(troca);
-    const { elegiveis } = await calcularElegiveis([bloco]);
-    return elegiveis[bloco.id].includes(troca.id_usuario_destino);
+    const { motivos } = await calcularElegiveis([bloco]);
+    return motivos[bloco.id][troca.id_usuario_destino] || null;
 }
 
 async function detalharTroca(idSolicitacao, usuario) {
@@ -98,7 +99,9 @@ async function detalharTroca(idSolicitacao, usuario) {
     if (!admin && ![troca.id_usuario_origem, troca.id_usuario_destino].includes(usuario.id_usuario)) {
         throw new ErroApi(404, 'Solicitação não encontrada.');
     }
-    return { ...troca, destino_disponivel: admin ? await verificarDestino(troca) : undefined };
+    if (!admin) return troca;
+    const motivo = await verificarDestino(troca);
+    return { ...troca, destino_disponivel: troca.id_usuario_destino ? !motivo : null, destino_motivo: motivo };
 }
 
 async function analisarTroca(idSolicitacao, aprovar, admin) {
